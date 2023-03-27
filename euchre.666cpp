@@ -1,0 +1,283 @@
+// Project UID 1d9f47bfc76643019cfbf037641defe1
+#include <string>
+#include <iostream>
+#include <sstream>
+#include <fstream>
+#include <stdlib.h>
+#include <vector>
+#include <cassert>
+#include "Player.h"
+#include "Card.h"
+#include "Pack.h"
+using namespace std;
+struct winner {
+    int whoOrder;
+    int trick1;
+    int trick2;
+};
+void dealCards(Pack &pack, vector<Player*> &players, int dealer);
+int playAround(vector<Player*> &players, string order_up_suit,
+               int leaderIndex);
+void countWinner(winner win, int &count1,
+                 int &count2, vector<Player*> &players);
+int getNextIn(int leaderIndex, vector<Player*> &players, int next);
+
+int main(int argc, char *argv[]){
+    for (int i = 0; i < 12; ++i){
+        cout << argv[i] << " ";
+    }
+    cout << endl;
+    string pack_filename = argv[1];
+    string shuf = argv[2];
+    int points = atoi(argv[3]);
+    int times = 0; //count for Hand
+    int count1 = 0; //player0 and 2
+    int count2 = 0; //player1 and 3
+    int dealer = 0; //dealer is the index of dealer each hand
+    winner win;
+    ifstream input;
+    input.open(pack_filename);
+    if (!input.is_open()){
+        cout << "Error opening " << pack_filename << endl;
+        return -1;
+    }
+    Pack pack = Pack(input);
+    Player *player0 = Player_factory(argv[4], argv[5]);
+    Player *player1 = Player_factory(argv[6], argv[7]);
+    Player *player2 = Player_factory(argv[8], argv[9]);
+    Player *player3 = Player_factory(argv[10], argv[11]);
+    vector<Player*> players;
+    players.push_back(player0);
+    players.push_back(player1);
+    players.push_back(player2);
+    players.push_back(player3);
+    while (count1 < points && count2 < points){
+        cout << "Hand " << times << endl;
+        cout << players[dealer] -> get_name() << " deals" << endl;
+        int index = 0;
+        int countRound = 0;
+        int nextLed = 0;
+        if (shuf == "shuffle"){
+            pack.shuffle();
+        }
+        dealCards(pack, players, dealer);
+        ++times;
+        bool is_dealer = false;
+        int round = 1;
+        string order_up_suit = "";
+        Card trump = pack.deal_one();
+        cout << trump << " turned up" << endl;
+        bool order = false;
+        index = dealer + 1;
+        int firstLeader = dealer + 1;
+        if (firstLeader == 4){
+            firstLeader = 0;
+        }
+        while (!order){
+            if (index == 4){
+                index = 0;
+            }
+            if (index == dealer){
+                is_dealer = true;
+            }
+            if (countRound == 4){
+                ++round;
+            }
+            ++countRound;
+            order = players[index] -> make_trump(trump, is_dealer,
+                                                 round, order_up_suit);
+            if (!order){
+                cout << players[index] -> get_name() << " passes" << endl;
+            }else{
+                cout << players[index] -> get_name() << " orders up "
+                << order_up_suit << endl;
+            }
+            ++index;
+            is_dealer = false;
+        }
+        if (round == 1){
+        players[dealer] -> add_and_discard(trump);
+        }
+        ++dealer;
+        if (dealer == 4){
+            dealer = 0;
+        }
+        cout << endl;
+        //5 games start
+        win.trick1 = 0; //player0 and 2
+        win.trick2 = 0; //player1 and 3
+        --index;
+        win.whoOrder = index;
+        nextLed = playAround(players, order_up_suit, firstLeader);
+        index = nextLed;
+        if (index == 1 || index == 3){
+            win.trick2 = win.trick2 + 1;
+        }else{
+            win.trick1 = win.trick1 + 1;
+        }
+        for (int i = 1; i < 5; ++i){
+            nextLed = playAround(players, order_up_suit, index);
+            index = nextLed;
+            if (index == 1 || index == 3){
+                win.trick2 = win.trick2 + 1;
+            }else{
+                win.trick1 = win.trick1 + 1;
+            }
+        }
+        countWinner(win, count1, count2, players);
+        cout << players[0] -> get_name() << " and "
+        << players[2] -> get_name() << " have " << count1
+        << " points" << endl;
+        cout << players[1] -> get_name() << " and "
+        << players[3] -> get_name() << " have " << count2
+        << " points" << endl << endl;
+        if (shuf != "shuffle"){
+            pack.reset();
+        }
+    }
+    if (count1 > count2){
+        cout << players[0] -> get_name() << " and "
+        << players[2] -> get_name() << " win!" << endl;
+    }else if (count2 > count1){
+        cout << players[1] -> get_name() << " and "
+        << players[3] -> get_name() << " win!" << endl;
+    }
+    for (int i = 0; i < int(players.size()); ++i) {
+      delete players[i];
+    }
+    return 0;
+}
+
+void dealCards(Pack &pack, vector<Player*> &players, int dealer){
+    int countForRound = 0;
+    int dealIn = dealer + 1;
+    while (countForRound < 4){
+        if (dealIn == 4){
+            dealIn = 0;
+        }
+        if (countForRound % 2 == 0){
+            for (int i = 0; i < 3; ++i){
+                players[dealIn] -> add_card(pack.deal_one());
+            }
+        }else{
+            for (int i = 0; i < 2; ++i){
+                players[dealIn] -> add_card(pack.deal_one());
+            }
+        }
+        ++dealIn;
+        ++countForRound;
+    }
+    countForRound = 0;
+    dealIn = dealer + 1;
+    while (countForRound < 4){
+        if (dealIn == 4){
+            dealIn = 0;
+        }
+        if (countForRound % 2 == 0){
+            for (int i = 0; i < 2; ++i){
+                players[dealIn] -> add_card(pack.deal_one());
+            }
+        }else{
+            for (int i = 0; i < 3; ++i){
+                players[dealIn] -> add_card(pack.deal_one());
+            }
+        }
+        ++dealIn;
+        ++countForRound;
+    }
+}
+
+int playAround(vector<Player*> &players, string order_up_suit,
+               int leaderIndex){
+    Card led = players[leaderIndex] -> lead_card(order_up_suit);
+    cout << led << " led by " << players[leaderIndex] -> get_name() << endl;
+    vector<Card> cards;
+    cards.push_back(led);
+    Card playCard;
+    int nextLed = 0;
+    int countForRound = 0;
+    int playerIn = leaderIndex + 1;
+    while (countForRound < 3){
+        if (playerIn == 4){
+            playerIn = 0;
+        }
+        playCard = players[playerIn] -> play_card(led, order_up_suit);
+        cards.push_back(playCard);
+        cout << playCard << " played by "
+        << players[playerIn] -> get_name() << endl;
+        ++playerIn;
+        ++countForRound;
+    }
+    Card *high = &cards[0];
+    for (size_t i = 0; i < cards.size(); ++i){
+        if (Card_less(*high, cards[i], led, order_up_suit)){
+            high = &cards[i];
+            nextLed = static_cast<int>(i);
+        }
+    }
+    nextLed = getNextIn(leaderIndex, players, nextLed);
+    return nextLed;
+}
+
+void countWinner(winner win, int &count1,
+                 int &count2, vector<Player*> &players){
+    if (win.whoOrder == 0 || win.whoOrder == 2){
+        if (win.trick1 > win.trick2 && win.trick1 != 5){
+            ++count1;
+            cout << players[0] -> get_name() << " and "
+            << players[2] -> get_name() << " win the hand" << endl;
+        }else if (win.trick1 > win.trick2 && win.trick1 == 5){
+            count1 = count1 + 2;
+            cout << players[0] -> get_name() << " and "
+            << players[2] -> get_name() << " win the hand" << endl;
+            cout << "march!" << endl;
+        }else{
+            count2 = count2 + 2;
+            cout << players[1] -> get_name() << " and "
+            << players[3] -> get_name() << " win the hand" << endl;
+            cout << "euchred!" << endl;
+        }
+    }else{
+        if (win.trick2 > win.trick1 && win.trick2 != 5){
+            ++count2;
+            cout << players[1] -> get_name() << " and "
+            << players[3] -> get_name() << " win the hand" << endl;
+        }else if (win.trick2 > win.trick1 && win.trick2 == 5){
+            count2 = count2 + 2;
+            cout << players[1] -> get_name() << " and "
+            << players[3] -> get_name() << " win the hand" << endl;
+            cout << "march!" << endl;
+        }else{
+            count1 = count1 + 2;
+            cout << players[0] -> get_name() << " and "
+            << players[2] -> get_name() << " win the hand" << endl;
+            cout << "euchred!" << endl;
+        }
+    }
+}
+
+int getNextIn(int leaderIndex, vector<Player*> &players, int next){
+    int nextLed = next;
+    if (leaderIndex == 1){
+        if (nextLed != 3){
+            nextLed = nextLed + 1;
+        }else{
+            nextLed = 0;
+        }
+    }else if (leaderIndex == 2){
+        if (nextLed < 2){
+            nextLed = nextLed + 2;
+        }else{
+            nextLed = nextLed - 2;
+        }
+    }else if (leaderIndex == 3){
+        if (nextLed == 0){
+            nextLed = 3;
+        }else{
+            nextLed = nextLed - 1;
+        }
+    }
+    cout << players[nextLed] -> get_name()
+    << " takes the trick" << endl << endl;
+    return nextLed;
+}
